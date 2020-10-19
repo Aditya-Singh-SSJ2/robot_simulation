@@ -19,14 +19,16 @@ class Digitizer:
         self.rate = rospy.Rate(10)
         self.msg = Twist()		
         self.bridge = CvBridge()
+        self.initialise = True
+        self.l = []
+        self.track = []
+        self.idx = 0
+
 
     def callback(self, data):
         try:
-            # PART-1 
-            # TRACK DETECTING AND Center Of Mass of the contours
-
             image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
-            image = image[49:749, 135:666]
+            image = image[49:749, 135:666]     
             hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
             imgray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -34,46 +36,55 @@ class Digitizer:
             blurred = cv2.GaussianBlur(imgray, (5, 5), 0)
             ret, thresh = cv2.threshold(blurred, 200, 255, cv2.THRESH_BINARY)
 
-            _, contours, _= cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-
-            image1 = image.copy()
-
-            track = []
-
-            l = []
-            i = 1
-            for c in contours:
-                cX = cY = 0
-                # compute the center of the contour
-                M = cv2.moments(c)
-                if M["m00"]!=0:
-                    cX = int(M["m10"] / M["m00"])
-                if M["m00"]!=0:
-                    cY = int(M["m01"] / M["m00"])		
-
-                track.append(image.copy())
-                # center of the shape on the image
-                cv2.drawContours(track[-1], [c], -1, (0, 255, 0), -1)
-                cv2.circle(track[-1], (cX, cY), 7, (255, 255, 255), -1)
-                l.append([cX,cY])
-                cv2.putText(track[-1], str(i), (cX - 20, cY - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)    #RED_COLOR
-                # cv2.waitKey(10)
-                i+=1
-
-            # print(l)
-            # for i in range(2,len(track)):
-            #     cv2.imshow("track"+str(i), track[i])
-
-            # l contains all the track coordinates
-
-            l = [[379, 670], [373, 661], [0, 0], [270, 567], [289, 512], [410, 503], [136, 393], [273, 340], [420, 290], [246, 179], [129, 189], [262, 116]]
-
+            # PART-1 
+            # TRACK DETECTING AND Center Of Mass of the contours
             
-            
-            cv2.imshow("track", track[3])
+            if self.initialise:
 
+                _, contours, _= cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+
+                image1 = image.copy()
+
+
+
+                self.l = []
+                i = 1
+                for c in contours:
+                    cX = cY = 0
+                    # compute the center of the contour
+                    M = cv2.moments(c)
+                    if M["m00"]!=0:
+                        cX = int(M["m10"] / M["m00"])
+                    if M["m00"]!=0:
+                        cY = int(M["m01"] / M["m00"])		
+
+                    self.track.append(image.copy())
+                    # center of the shape on the image
+                    cv2.drawContours(self.track[-1], [c], -1, (0, 255, 0), -1)
+                    cv2.circle(self.track[-1], (cX, cY), 7, (255, 255, 255), -1)
+                    self.l.append([cX,cY])
+                    cv2.putText(self.track[-1], str(i), (cX - 20, cY - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)    #RED_COLOR
+                    # cv2.waitKey(10)
+                    i+=1
+
+                # print(l)
+                cv2.imshow("Image_1", image1)
+
+                # l contains all the track coordinates
+
+                # l = [[379, 670], [373, 661], [0, 0], [270, 567], [289, 512], [410, 503], [136, 393], [273, 340], [420, 290], [246, 179], [129, 189], [262, 116]]
+
+                
+                for i in range(2,len(self.track)):
+                    cv2.imshow("track"+str(i), self.track[i])
+                
+                self.initialise = False
+            
+            # l = [[379, 670], [373, 661], [0, 0], [270, 567], [289, 512], [410, 503], [136, 393], [273, 340], [420, 290], [246, 179], [129, 189], [262, 116]]
+            
             ### PART 2
             # Detecting Shapes & their COM Only!
 
@@ -284,24 +295,24 @@ class Digitizer:
             # Where am I?
             # atShape -> [1,6]
             mn = 10**5
-            idx = 0
+            # self.idx = 0
             for i in range(len(l2)):
                 dev = math.sqrt((l2[i][0]-x0)**2 + (l2[i][1]-y0)**2)
-                if dev<mn:
+                if dev<mn and dev<50:
                     mn = dev
-                    idx = i
+                    self.idx = i
 
             # tempCenter 
-            xo,yo = (l2[idx][0]+l2[idx+1][0])/2,(l2[idx][1]+l2[idx+1][1])/2 
+            xo,yo = (l2[self.idx][0]+l2[self.idx+1][0])/2,(l2[self.idx][1]+l2[self.idx+1][1])/2 
             # print(xo,yo)
 
             mn = 10**5
-            idx = 0
-            for i in range(2,len(l)):
-                dev = math.sqrt((l[i][0]-xo)**2 + (l[i][1]-yo)**2)
+            idx2 = 0
+            for i in range(2,len(self.l)):
+                dev = math.sqrt((self.l[i][0]-xo)**2 + (self.l[i][1]-yo)**2)
                 if dev<mn:
                     mn = dev
-                    idx = i
+                    idx2= i
 
 
 
@@ -310,7 +321,7 @@ class Digitizer:
             ### PART - 5 
             # Perspective transformation
 
-            image5 = track[idx]
+            image5 = self.track[idx2]
 
             cv2.imshow("TRACKKK", image5)
 
@@ -367,11 +378,11 @@ class Digitizer:
                     cX = int(M['m10']/M['m00'])
                     cY = int(M['m01']/M['m00'])
 
-                # center of the shape of the image
-                cv2.drawContours(result_perspectiveChange, [c], -1, (0,255,0), 2)
-                cv2.circle(result_perspectiveChange, (cX,cY), 7, (255,255,255), -1)
-                sensed_output = cX
-                cv2.putText(result_perspectiveChange, str(i), (cX-20, cY-20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2) # RED
+                    # center of the shape of the image
+                    cv2.drawContours(result_perspectiveChange, [c], -1, (0,255,0), 2)
+                    cv2.circle(result_perspectiveChange, (cX,cY), 7, (255,255,255), -1)
+                    sensed_output = cX
+                    cv2.putText(result_perspectiveChange, str(i), (cX-20, cY-20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2) # RED
 
             cv2.imshow('result_perspectiveChange',result_perspectiveChange) 
             
